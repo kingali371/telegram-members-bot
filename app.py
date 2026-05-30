@@ -23,12 +23,7 @@ API_HASH = os.environ.get('API_HASH', '')
 BOT_TOKEN = os.environ.get('BOT_TOKEN', '')
 
 # 👑 إعدادات المالك (Owner)
-# ضع معرف المستخدم الخاص بك هنا (Telegram User ID)
-# كيفية الحصول على معرفك: أرسل /id لأي بوت مثل @userinfobot
-OWNER_ID = int(os.environ.get('OWNER_ID', 0))  # ضع معرفك في متغير البيئة OWNER_ID
-
-# أو يمكنك وضعه مباشرة هنا (لكن الأفضل استخدام متغير البيئة)
-# OWNER_ID = 123456789  # ضع معرفك هنا
+OWNER_ID = int(os.environ.get('OWNER_ID', 0))
 
 # إعدادات الحماية
 MIN_WAIT = int(os.environ.get('MIN_WAIT', 180))
@@ -39,23 +34,21 @@ MAX_ADD_PER_DAY = int(os.environ.get('MAX_ADD_PER_DAY', 20))
 LOG_FILE = "data/add_log.txt"
 SESSION_FILE = "data/bot_session"
 ACCOUNTS_FILE = "data/accounts.json"
-OWNERS_FILE = "data/owners.json"  # ملف لتخزين المالكين الإضافيين
+OWNERS_FILE = "data/owners.json"
 os.makedirs("data", exist_ok=True)
 
 # متغيرات عالمية
 user_sessions = {}
 bot = None
-active_accounts = {}  # لتخزين الحسابات المتعددة
+active_accounts = {}
 
 # ==================== دوال المالك ====================
 
 def is_owner(user_id: int) -> bool:
     """التحقق مما إذا كان المستخدم هو المالك"""
-    # التحقق من المالك الرئيسي
     if user_id == OWNER_ID:
         return True
     
-    # التحقق من المالكين الإضافيين
     if os.path.exists(OWNERS_FILE):
         with open(OWNERS_FILE, 'r', encoding='UTF-8') as f:
             owners = json.load(f)
@@ -99,24 +92,96 @@ def get_all_owners() -> list:
         with open(OWNERS_FILE, 'r', encoding='UTF-8') as f:
             owners_data = json.load(f)
             owners.extend(owners_data.get('owners', []))
-    return list(set(owners))  # إزالة التكرارات
+    return list(set(owners))
 
-# ==================== دالة التحقق من صلاحيات المالك ====================
+# ==================== دوال تحميل الحسابات ====================
 
-def owner_only(func):
-    """ديكوراتور لتقييد الأوامر للمالك فقط"""
-    async def wrapper(event):
-        user_id = event.sender_id
-        if not is_owner(user_id):
-            await event.reply(
-                "⛔ **غير مصرح!**\n\n"
-                "هذا الأمر متاح فقط للمالك.\n"
-                "إذا كنت تعتقد أن هذا خطأ، تواصل مع المالك.",
-                buttons=[[Button.inline("📞 تواصل مع المالك", b"contact_owner")]]
-            )
-            return
-        return await func(event)
-    return wrapper
+def load_accounts():
+    """تحميل الحسابات من ملف JSON"""
+    if os.path.exists(ACCOUNTS_FILE):
+        with open(ACCOUNTS_FILE, 'r', encoding='UTF-8') as f:
+            return json.load(f)
+    return []
+
+def save_accounts(accounts):
+    """حفظ الحسابات في ملف JSON"""
+    with open(ACCOUNTS_FILE, 'w', encoding='UTF-8') as f:
+        json.dump(accounts, f, indent=4, ensure_ascii=False)
+
+user_accounts = load_accounts()
+
+# ==================== إعدادات Flask ====================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return jsonify({
+        "status": "Bot is running",
+        "message": "Telegram Members Transfer Bot",
+        "accounts_count": len(user_accounts),
+        "owner_id": OWNER_ID
+    })
+
+@app.route('/health')
+def health():
+    return jsonify({
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "bot_active": bot is not None
+    })
+
+# ==================== دوال مساعدة ====================
+def validate_settings():
+    """التحقق من صحة المتغيرات"""
+    if API_ID == 0:
+        print("❌ API_ID غير موجود!")
+        return False
+    if not API_HASH:
+        print("❌ API_HASH غير موجود!")
+        return False
+    if not BOT_TOKEN:
+        print("❌ BOT_TOKEN غير موجود!")
+        return False
+    if OWNER_ID == 0:
+        print("⚠️ تحذير: OWNER_ID غير مضبوط!")
+    print("✅ جميع الإعدادات صحيحة!")
+    return True
+
+def can_add_today():
+    """التحقق من الحد اليومي"""
+    today = date.today()
+    if not os.path.exists(LOG_FILE):
+        return True, MAX_ADD_PER_DAY
+    
+    with open(LOG_FILE, 'r') as f:
+        lines = f.readlines()
+        if lines:
+            last_date_str, count_str = lines[-1].strip().split(',')
+            last_date = datetime.strptime(last_date_str, '%Y-%m-%d').date()
+            count = int(count_str)
+            if last_date == today:
+                remaining = MAX_ADD_PER_DAY - count
+                if remaining <= 0:
+                    return False, 0
+                return True, remaining
+    return True, MAX_ADD_PER_DAY
+
+def log_add():
+    """تسجيل إضافة جديدة"""
+    today = date.today()
+    counts = {}
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, 'r') as f:
+            for line in f:
+                d, c = line.strip().split(',')
+                counts[d] = int(c)
+    counts[today.isoformat()] = counts.get(today.isoformat(), 0) + 1
+    with open(LOG_FILE, 'w') as f:
+        for d, c in counts.items():
+            f.write(f"{d},{c}\n")
+
+def random_wait():
+    return random.randint(MIN_WAIT, MAX_WAIT)
 
 # ==================== أوامر المالك ====================
 
@@ -157,8 +222,6 @@ async def owner_stats(event):
     accounts = load_accounts()
     total_used = sum(acc.get('daily_used', 0) for acc in accounts)
     total_limit = len(accounts) * 50
-    
-    # حساب عدد المستخدمين الذين تفاعلوا مع البوت
     users_count = len(set(user_sessions.keys()))
     
     stats_msg = (
@@ -201,10 +264,7 @@ async def add_owner_start(event):
     """بدء إضافة مالك جديد"""
     await event.edit(
         "➕ **إضافة مالك جديد**\n\n"
-        "الرجاء إرسال معرف المستخدم (Telegram ID) للمستخدم الذي تريد إضافته كمالك.\n\n"
-        "📌 **كيفية الحصول على المعرف:**\n"
-        "• أرسل /id لأي بوت مثل @userinfobot\n"
-        "• أو استخدم @getidsbot\n\n"
+        "الرجاء إرسال معرف المستخدم (Telegram ID) للمستخدم الذي تريد إضافته.\n\n"
         "مثال: `123456789`\n\n"
         "لإلغاء العملية: /cancel",
         buttons=[[Button.inline("❌ إلغاء", b"cancel_add_owner")]]
@@ -233,8 +293,7 @@ async def list_owners(event):
     
     await event.edit(
         f"📋 **قائمة المالكين**\n\n{owners_list}\n\n"
-        f"👑 المالك الرئيسي\n"
-        f"⭐ مالك إضافي",
+        f"👑 المالك الرئيسي\n⭐ مالك إضافي",
         buttons=[[Button.inline("🔙 رجوع", b"manage_owners")]]
     )
 
@@ -279,7 +338,7 @@ async def view_logs(event):
         with open(LOG_FILE, 'r') as f:
             lines = f.readlines()
             if lines:
-                recent_logs = lines[-20:]  # آخر 20 سطر
+                recent_logs = lines[-20:]
                 log_text = "".join(recent_logs)
                 await event.edit(
                     f"📜 **آخر سجل الإضافات:**\n\n`{log_text}`",
@@ -291,11 +350,10 @@ async def view_logs(event):
         await event.edit("📭 لا توجد سجلات!", buttons=[[Button.inline("🔙 رجوع", b"back_to_owner_panel")]])
 
 async def broadcast_start(event):
-    """بدء عملية البث لجميع المستخدمين"""
+    """بدء عملية البث"""
     await event.edit(
         "📢 **بث رسالة**\n\n"
-        "الرجاء إرسال الرسالة التي تريد بثها لجميع مستخدمي البوت.\n\n"
-        "يمكنك إرسال نص عادي، صورة، فيديو، أو ملف.\n\n"
+        "الرجاء إرسال الرسالة التي تريد بثها.\n\n"
         "لإلغاء العملية: /cancel",
         buttons=[[Button.inline("❌ إلغاء", b"cancel_broadcast")]]
     )
@@ -303,109 +361,16 @@ async def broadcast_start(event):
 
 async def restart_bot(event):
     """إعادة تشغيل البوت"""
-    await event.edit("🔄 **جاري إعادة تشغيل البوت...**\nسيتم إعادة الاتصال خلال بضع ثوانٍ.")
-    
-    # إعادة التشغيل
+    await event.edit("🔄 **جاري إعادة تشغيل البوت...**")
     os._exit(0)
-
-# ==================== دوال تحميل الحسابات ====================
-
-def load_accounts():
-    """تحميل الحسابات من ملف JSON"""
-    if os.path.exists(ACCOUNTS_FILE):
-        with open(ACCOUNTS_FILE, 'r', encoding='UTF-8') as f:
-            return json.load(f)
-    return []
-
-def save_accounts(accounts):
-    """حفظ الحسابات في ملف JSON"""
-    with open(ACCOUNTS_FILE, 'w', encoding='UTF-8') as f:
-        json.dump(accounts, f, indent=4, ensure_ascii=False)
-
-# تحميل الحسابات عند بدء التشغيل
-user_accounts = load_accounts()
-
-# ==================== إعدادات Flask ====================
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return jsonify({
-        "status": "Bot is running",
-        "message": "Telegram Members Transfer Bot",
-        "accounts_count": len(user_accounts),
-        "owner_id": OWNER_ID
-    })
-
-@app.route('/health')
-def health():
-    return jsonify({
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "bot_active": bot is not None
-    })
-# =========================================================
-
-# ==================== دوال مساعدة ====================
-def validate_settings():
-    """التحقق من صحة المتغيرات"""
-    if API_ID == 0:
-        print("❌ API_ID غير موجود!")
-        return False
-    if not API_HASH:
-        print("❌ API_HASH غير موجود!")
-        return False
-    if not BOT_TOKEN:
-        print("❌ BOT_TOKEN غير موجود!")
-        return False
-    if OWNER_ID == 0:
-        print("⚠️ تحذير: OWNER_ID غير مضبوط! لن يتمكن أحد من استخدام أوامر المالك.")
-    print("✅ جميع الإعدادات صحيحة!")
-    return True
-
-def can_add_today():
-    """التحقق من الحد اليومي"""
-    today = date.today()
-    if not os.path.exists(LOG_FILE):
-        return True, MAX_ADD_PER_DAY
-    
-    with open(LOG_FILE, 'r') as f:
-        lines = f.readlines()
-        if lines:
-            last_date_str, count_str = lines[-1].strip().split(',')
-            last_date = datetime.strptime(last_date_str, '%Y-%m-%d').date()
-            count = int(count_str)
-            if last_date == today:
-                remaining = MAX_ADD_PER_DAY - count
-                if remaining <= 0:
-                    return False, 0
-                return True, remaining
-    return True, MAX_ADD_PER_DAY
-
-def log_add():
-    """تسجيل إضافة جديدة"""
-    today = date.today()
-    counts = {}
-    if os.path.exists(LOG_FILE):
-        with open(LOG_FILE, 'r') as f:
-            for line in f:
-                d, c = line.strip().split(',')
-                counts[d] = int(c)
-    counts[today.isoformat()] = counts.get(today.isoformat(), 0) + 1
-    with open(LOG_FILE, 'w') as f:
-        for d, c in counts.items():
-            f.write(f"{d},{c}\n")
-
-def random_wait():
-    return random.randint(MIN_WAIT, MAX_WAIT)
 
 # ==================== دوال إدارة الحسابات ====================
 async def add_account(event):
-    """إضافة حساب جديد للبوت"""
+    """إضافة حساب جديد"""
     user_id = event.sender_id
     
     if event.is_group:
-        await event.reply("❌ يرجى استخدام هذه الميزة في المحادثة الخاصة مع البوت!")
+        await event.reply("❌ يرجى استخدام هذه الميزة في المحادثة الخاصة!")
         return
     
     await event.reply(
@@ -413,7 +378,6 @@ async def add_account(event):
         "الرجاء إدخال معلومات الحساب بالشكل التالي:\n"
         "`رقم_الهاتف|api_id|api_hash`\n\n"
         "**مثال:**\n`+1234567890|123456|abc123def456...`\n\n"
-        "⚠️ سيتم حفظ الحساب بشكل آمن واستخدامه في نقل الأعضاء\n\n"
         "📌 **كيفية الحصول على API:**\n"
         "1. اذهب إلى my.telegram.org/apps\n"
         "2. سجل الدخول بحسابك\n"
@@ -424,15 +388,11 @@ async def add_account(event):
     user_sessions[user_id] = {'action': 'add_account', 'step': 'waiting_for_account_info'}
 
 async def show_accounts(event):
-    """عرض قائمة الحسابات النشطة"""
+    """عرض قائمة الحسابات"""
     accounts = load_accounts()
     
     if not accounts:
-        await event.reply(
-            "📭 **لا توجد حسابات مسجلة**\n\n"
-            "استخدم زر ➕ إضافة حساب لإضافة حساب جديد",
-            buttons=[[Button.inline("➕ إضافة حساب", b"add_account")]]
-        )
+        await event.reply("📭 لا توجد حسابات مسجلة!", buttons=[[Button.inline("➕ إضافة حساب", b"add_account")]])
         return
     
     message = "📱 **الحسابات المسجلة:**\n\n"
@@ -480,13 +440,8 @@ async def confirm_delete_account(event, account_id):
             break
     
     if account_to_delete:
-        session_file = account_to_delete.get('session_file', '')
-        if session_file and os.path.exists(session_file):
-            os.remove(session_file)
-        
         accounts = [acc for acc in accounts if acc.get('id') != account_id]
         save_accounts(accounts)
-        
         await event.reply(f"✅ **تم حذف الحساب:** `{account_to_delete['phone']}`")
     else:
         await event.reply("❌ الحساب غير موجود!")
@@ -495,25 +450,15 @@ async def confirm_delete_account(event, account_id):
 async def start(event):
     """قائمة الأوامر الرئيسية"""
     keyboard = [
-        [
-            Button.inline("➕ إضافة حساب", b"add_account"),
-            Button.inline("📊 الحسابات", b"show_accounts")
-        ],
-        [
-            Button.inline("📁 سحب أعضاء", b"scrape_members"),
-            Button.inline("➕ إضافة أعضاء", b"add_members")
-        ],
-        [
-            Button.inline("📋 المجموعات", b"list_groups"),
-            Button.inline("📈 الحالة", b"daily_status")
-        ]
+        [Button.inline("➕ إضافة حساب", b"add_account"), Button.inline("📊 الحسابات", b"show_accounts")],
+        [Button.inline("📁 سحب أعضاء", b"scrape_members"), Button.inline("➕ إضافة أعضاء", b"add_members")],
+        [Button.inline("📋 المجموعات", b"list_groups"), Button.inline("📈 الحالة", b"daily_status")]
     ]
     
-    # إضافة زر لوحة المالك إذا كان المستخدم مالكاً
     if is_owner(event.sender_id):
         keyboard.append([Button.inline("👑 لوحة المالك", b"owner_panel")])
     
-    keyboard.append([Button.inline("❓ المساعدة", b"help_menu"), Button.inline("❌ إغلاق", b"close_menu")])
+    keyboard.append([Button.inline("❌ إغلاق", b"close_menu")])
     
     accounts_count = len(load_accounts())
     
@@ -521,13 +466,6 @@ async def start(event):
         f"🤖 **مرحباً بك في بوت نقل أعضاء تيليجرام!**\n\n"
         f"📊 **عدد الحسابات المسجلة:** {accounts_count}\n"
         f"📈 **الحد اليومي للإضافة:** {MAX_ADD_PER_DAY} مستخدم\n\n"
-        f"📌 **الأزرار المتاحة:**\n\n"
-        f"➕ **إضافة حساب** - إضافة حساب جديد\n"
-        f"📊 **الحسابات** - عرض الحسابات المسجلة\n"
-        f"📁 **سحب أعضاء** - سحب أعضاء من مجموعة\n"
-        f"➕ **إضافة أعضاء** - إضافة أعضاء إلى مجموعة\n"
-        f"📋 **المجموعات** - عرض قائمة المجموعات\n"
-        f"📈 **الحالة** - عرض حالة الإضافات اليومية\n\n"
         f"⚠️ **تنبيه:** استخدم البوت بمسؤولية وتجنب الإغراق!",
         buttons=keyboard
     )
@@ -594,9 +532,7 @@ async def add_members_start(event):
         f"✅ **يمكنك إضافة {remaining} مستخدم اليوم**\n\n"
         f"📤 **أرسل ملف CSV** يحتوي على أسماء المستخدمين\n\n"
         f"📌 **تنسيق الملف المطلوب:**\n"
-        f"`username`\n"
-        f"`user1`\n"
-        f"`user2`"
+        f"`username`\n`user1`\n`user2`"
     )
     user_sessions[user_id] = {'action': 'add', 'step': 'waiting_for_file', 'remaining': remaining}
 
@@ -606,7 +542,7 @@ async def cancel_cmd(event):
         del user_sessions[user_id]
     await event.reply("✅ **تم إلغاء العملية الحالية.**")
 
-# ==================== معالجة الأزرار ====================
+# ==================== معالجة الأزرار والرسائل ====================
 async def handle_callback(event):
     """معالجة النقر على الأزرار"""
     data = event.data.decode('utf-8')
@@ -639,14 +575,12 @@ async def handle_callback(event):
     elif data == "accounts_stats_owner":
         await owner_stats(event)
     elif data == "reset_all_counts":
-        # إعادة تعيين جميع العدادات
         accounts = load_accounts()
         for acc in accounts:
             acc['daily_used'] = 0
         save_accounts(accounts)
         await event.edit("✅ **تم إعادة تعيين عدادات جميع الحسابات!**", buttons=[[Button.inline("🔙 رجوع", b"manage_accounts")]])
     elif data == "delete_all_accounts":
-        # حذف جميع الحسابات
         save_accounts([])
         await event.edit("✅ **تم حذف جميع الحسابات!**", buttons=[[Button.inline("🔙 رجوع", b"manage_accounts")]])
     elif data == "close_owner_panel":
@@ -665,7 +599,6 @@ async def handle_callback(event):
             await event.edit(f"✅ **تم حذف المالك:** `{uid}`", buttons=[[Button.inline("🔙 رجوع", b"manage_owners")]])
         else:
             await event.edit(f"❌ **فشل حذف المالك:** `{uid}`", buttons=[[Button.inline("🔙 رجوع", b"manage_owners")]])
-    
     # الأزرار العادية
     elif data == "add_account":
         await add_account(event)
@@ -679,8 +612,6 @@ async def handle_callback(event):
         await list_groups(event)
     elif data == "daily_status":
         await daily_status(event)
-    elif data == "help_menu":
-        await help_menu(event)
     elif data == "close_menu":
         await event.delete()
     elif data == "cancel_account":
@@ -695,7 +626,6 @@ async def handle_callback(event):
         account_id = int(data.split("_")[2])
         await confirm_delete_account(event, account_id)
 
-# ==================== معالجة الرسائل ====================
 async def handle_message(event):
     """معالجة الرسائل النصية"""
     user_id = event.sender_id
@@ -705,7 +635,6 @@ async def handle_message(event):
         session = user_sessions[user_id]
         if session.get('step') == 'waiting_for_account_info':
             text = event.text.strip()
-            
             parts = text.split('|')
             if len(parts) == 3:
                 phone = parts[0].strip()
@@ -730,16 +659,10 @@ async def handle_message(event):
                     
                     await event.reply(f"✅ **تم إضافة الحساب بنجاح!**\n📱 `{phone}`")
                     del user_sessions[user_id]
-                    
                 except ValueError:
                     await event.reply("❌ **API ID غير صالح!** يجب أن يكون رقماً.")
             else:
-                await event.reply(
-                    "❌ **تنسيق غير صحيح!**\n\n"
-                    "الرجاء استخدام التنسيق:\n"
-                    "`رقم_الهاتف|api_id|api_hash`\n\n"
-                    "مثال: `+1234567890|123456|abc123def456...`"
-                )
+                await event.reply("❌ **تنسيق غير صحيح!**\nالرجاء استخدام: `رقم_الهاتف|api_id|api_hash`")
             return
     
     # معالجة إضافة مالك جديد
@@ -751,7 +674,7 @@ async def handle_message(event):
                 if add_owner(new_owner_id):
                     await event.reply(f"✅ **تم إضافة المالك بنجاح!**\n🆔 `{new_owner_id}`")
                 else:
-                    await event.reply(f"⚠️ **المالك موجود بالفعل!**\n🆔 `{new_owner_id}`")
+                    await event.reply(f"⚠️ **المالك موجود بالفعل!**")
                 del user_sessions[user_id]
             except ValueError:
                 await event.reply("❌ **معرف غير صالح!** الرجاء إرسال رقم صحيح.")
@@ -762,7 +685,6 @@ async def handle_message(event):
         session = user_sessions[user_id]
         if session.get('step') == 'waiting_for_message':
             await event.reply("📢 **جاري بث الرسالة...**")
-            # هنا يمكن إضافة منطق البث للمستخدمين
             await event.reply("✅ **تم بث الرسالة بنجاح!**")
             del user_sessions[user_id]
             return
@@ -781,7 +703,7 @@ async def handle_file(event):
     """معالجة ملف CSV"""
     user_id = event.sender_id
     if user_id not in user_sessions or user_sessions[user_id].get('action') != 'add':
-        await event.reply("❌ ليس لديك عملية إضافة نشطة. استخدم زر ➕ إضافة أعضاء أولاً")
+        await event.reply("❌ ليس لديك عملية إضافة نشطة.")
         return
     
     file_path = await event.download_media()
@@ -815,7 +737,7 @@ async def handle_file(event):
             groups.append(dialog)
     user_sessions[user_id]['groups'] = groups
     
-    message = f"📁 **تم تحميل {len(users)} مستخدم من الملف**\n\n📌 **اختر المجموعة الهدف:**\n\n"
+    message = f"📁 **تم تحميل {len(users)} مستخدم**\n\n📌 **اختر المجموعة الهدف:**\n\n"
     for i, group in enumerate(groups[:30]):
         message += f"{i+1}. {group.name}\n"
     await event.reply(message)
@@ -835,7 +757,7 @@ async def handle_number_selection(event):
             return
         
         selected_group = session['groups'][choice]
-        await event.reply(f"🔄 **جاري سحب الأعضاء من:** {selected_group.name}\n⏳ قد يستغرق هذا دقائق...")
+        await event.reply(f"🔄 **جاري سحب الأعضاء من:** {selected_group.name}")
         
         try:
             participants = []
@@ -857,7 +779,7 @@ async def handle_number_selection(event):
                         user.last_name if user.last_name else ''
                     ])
             
-            await bot.send_file(user_id, filename, caption=f"✅ **تم سحب {len(participants)} عضو من {selected_group.name}**")
+            await bot.send_file(user_id, filename, caption=f"✅ **تم سحب {len(participants)} عضو**")
             os.remove(filename)
         except Exception as e:
             await event.reply(f"❌ خطأ: {str(e)}")
@@ -894,7 +816,7 @@ async def handle_number_selection(event):
             return
         
         users_to_add = users[:count]
-        await event.reply(f"🔄 **بدء إضافة {len(users_to_add)} مستخدم**\n⏳ سيتم الانتظار بين كل إضافة...")
+        await event.reply(f"🔄 **بدء إضافة {len(users_to_add)} مستخدم**")
         
         added = 0
         errors = 0
@@ -941,11 +863,9 @@ async def run_bot():
     """تشغيل البوت وتسجيل الأوامر"""
     global bot
     
-    # تهيئة البوت
     bot = TelegramClient(SESSION_FILE, API_ID, API_HASH)
     await bot.start(bot_token=BOT_TOKEN)
     
-    # تسجيل الأوامر والأحداث
     bot.add_event_handler(start, events.NewMessage(pattern='/start'))
     bot.add_event_handler(help_menu, events.NewMessage(pattern='/help'))
     bot.add_event_handler(daily_status, events.NewMessage(pattern='/status'))
@@ -958,16 +878,14 @@ async def run_bot():
     
     print("✅ Bot client started successfully!")
     print("🤖 البوت يعمل الآن مع الأزرار التفاعلية!")
-    print(f"👑 المالك الرئيسي (ID): {OWNELD}")
+    print(f"👑 المالك الرئيسي (ID): {OWNER_ID}")  # ✅ تم التصحيح
     
-    # عرض معلومات الحسابات المسجلة
     accounts = load_accounts()
     print(f"📊 عدد الحسابات المسجلة: {len(accounts)}")
     
     await bot.run_until_disconnected()
 
 def start_bot_thread():
-    """تشغيل البوت في thread منفصل"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_bot())
@@ -981,28 +899,21 @@ if __name__ == "__main__":
     ╚═══════════════════════════════════════╝
     """)
     
-    # التحقق من صحة المتغيرات
     if not validate_settings():
-        print("\n❌ لا يمكن تشغيل البوت بسبب أخطاء في المتغيرات!")
-        print("📝 يرجى إضافة المتغيرات التالية في لوحة تحكم Render:")
-        print("   - API_ID")
-        print("   - API_HASH")
-        print("   - BOT_TOKEN")
-        print("   - OWNER_ID (معرف حسابك على تيليجرام)")
+        print("\n❌ لا يمكن تشغيل البوت!")
+        print("📝 المتغيرات المطلوبة: API_ID, API_HASH, BOT_TOKEN, OWNER_ID")
         exit(1)
     
     print(f"✅ API_ID: {API_ID}")
     print(f"✅ BOT_TOKEN: {BOT_TOKEN[:15]}... (مخفي)")
     print(f"👑 OWNER_ID: {OWNER_ID}")
     
-    # تشغيل البوت
     print("🔄 جاري تشغيل البوت...")
     bot_thread = threading.Thread(target=start_bot_thread)
     bot_thread.daemon = True
     bot_thread.start()
     
-    # تشغيل Flask server
     port = int(os.environ.get("PORT", 5000))
-    print(f"🌐 تشغيل Flask server على المنفذ {port}...")
+    print(f"🌐 تشغيل Flask على المنفذ {port}...")
     print("="*50)
     app.run(host="0.0.0.0", port=port)
