@@ -16,54 +16,14 @@ from telethon.tl.functions.channels import InviteToChannelRequest
 from telethon.errors.rpcerrorlist import PeerFloodError, UserPrivacyRestrictedError
 
 # ==================== 🔑 قراءة المتغيرات البيئية ====================
-# هذه المتغيرات ستضيفها في لوحة تحكم Render
-
-# 1️⃣ API ID و API Hash من موقع my.telegram.org
 API_ID = int(os.environ.get('API_ID', 0))
 API_HASH = os.environ.get('API_HASH', '')
 BOT_TOKEN = os.environ.get('BOT_TOKEN', '')
 
-# 2️⃣ إعدادات الحماية (يمكنك ضبطها من المتغيرات أو تركها كما هي)
-MIN_WAIT = int(os.environ.get('MIN_WAIT', 180))      # أقل وقت بين الإضافات (ثواني)
-MAX_WAIT = int(os.environ.get('MAX_WAIT', 300))      # أقصى وقت بين الإضافات (ثواني)
-MAX_ADD_PER_DAY = int(os.environ.get('MAX_ADD_PER_DAY', 20))  # الحد الأقصى للإضافات في اليوم
-
-# ================================================================
-
-# التحقق من صحة المتغيرات
-def validate_settings():
-    """تتحقق من صحة المتغيرات البيئية قبل تشغيل البوت"""
-    errors = []
-    
-    if API_ID == 0:
-        errors.append("❌ API_ID غير موجود! يرجى إضافته في متغيرات البيئة")
-    
-    if not API_HASH:
-        errors.append("❌ API_HASH غير موجود! يرجى إضافته في متغيرات البيئة")
-    
-    if not BOT_TOKEN:
-        errors.append("❌ BOT_TOKEN غير موجود! يرجى إضافته في متغيرات البيئة")
-    
-    if MAX_ADD_PER_DAY > 50:
-        errors.append("⚠️ تحذير: MAX_ADD_PER_DAY أكبر من 50 - هذا قد يعرض حسابك للخطر!")
-    
-    if MIN_WAIT < 60:
-        errors.append("⚠️ تحذير: MIN_WAIT أقل من 60 ثانية - قد تحصل على حظر Flood!")
-    
-    if errors:
-        print("\n" + "="*50)
-        for error in errors:
-            print(error)
-        print("="*50)
-        return False
-    
-    print("✅ جميع الإعدادات صحيحة!")
-    print(f"🤖 توكن البوت: {BOT_TOKEN[:15]}...")
-    print(f"🔑 API ID: {API_ID}")
-    print(f"🔐 API Hash: {API_HASH[:10]}...")
-    print(f"📊 الحد اليومي: {MAX_ADD_PER_DAY} مستخدم")
-    print(f"⏱️  وقت الانتظار: {MIN_WAIT} - {MAX_WAIT} ثانية")
-    return True
+# إعدادات الحماية
+MIN_WAIT = int(os.environ.get('MIN_WAIT', 180))
+MAX_WAIT = int(os.environ.get('MAX_WAIT', 300))
+MAX_ADD_PER_DAY = int(os.environ.get('MAX_ADD_PER_DAY', 20))
 
 # إعدادات الملفات
 LOG_FILE = "data/add_log.txt"
@@ -73,7 +33,6 @@ os.makedirs("data", exist_ok=True)
 # متغيرات عالمية
 user_sessions = {}
 bot = None
-bot_thread = None
 
 # ==================== إعدادات Flask ====================
 app = Flask(__name__)
@@ -81,19 +40,33 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return jsonify({
-        "status": "Bot is running", 
-        "message": "Telegram Members Transfer Bot",
-        "bot_username": BOT_TOKEN.split(':')[0] if ':' in BOT_TOKEN else "unknown"
+        "status": "Bot is running",
+        "message": "Telegram Members Transfer Bot"
     })
 
 @app.route('/health')
 def health():
     return jsonify({
-        "status": "ok", 
+        "status": "ok",
         "timestamp": datetime.now().isoformat(),
         "bot_active": bot is not None
     })
 # =========================================================
+
+# ==================== دوال مساعدة ====================
+def validate_settings():
+    """التحقق من صحة المتغيرات"""
+    if API_ID == 0:
+        print("❌ API_ID غير موجود!")
+        return False
+    if not API_HASH:
+        print("❌ API_HASH غير موجود!")
+        return False
+    if not BOT_TOKEN:
+        print("❌ BOT_TOKEN غير موجود!")
+        return False
+    print("✅ جميع الإعدادات صحيحة!")
+    return True
 
 def can_add_today():
     """التحقق من الحد اليومي"""
@@ -131,8 +104,7 @@ def log_add():
 def random_wait():
     return random.randint(MIN_WAIT, MAX_WAIT)
 
-# ========== أوامر البوت ==========
-@bot.on(events.NewMessage(pattern='/start'))
+# ==================== دوال البوت ====================
 async def start(event):
     await event.reply("""
 🤖 **مرحباً بك في بوت نقل أعضاء تيليجرام!**
@@ -149,11 +121,9 @@ async def start(event):
 ⚠️ **تحذير:** استخدم البوت بمسؤولية!
     """)
 
-@bot.on(events.NewMessage(pattern='/help'))
 async def help_cmd(event):
     await start(event)
 
-@bot.on(events.NewMessage(pattern='/status'))
 async def status_cmd(event):
     can_add, remaining = can_add_today()
     if can_add:
@@ -161,7 +131,6 @@ async def status_cmd(event):
     else:
         await event.reply(f"❌ **تم الوصول للحد اليومي!**\n📊 الحد الأقصى: {MAX_ADD_PER_DAY}\n⏰ انتظر حتى الغد.")
 
-@bot.on(events.NewMessage(pattern='/groups'))
 async def list_groups(event):
     await event.reply("🔄 **جاري تحميل قائمة المجموعات...**")
     groups = []
@@ -176,7 +145,6 @@ async def list_groups(event):
         message += f"{i+1}. {group.name}\n"
     await event.reply(message)
 
-@bot.on(events.NewMessage(pattern='/scrape'))
 async def scrape_start(event):
     user_id = event.sender_id
     await event.reply("🔄 **بدء عملية سحب الأعضاء...**")
@@ -193,7 +161,6 @@ async def scrape_start(event):
         message += f"{i+1}. {group.name}\n"
     await event.reply(message)
 
-@bot.on(events.NewMessage(pattern='/add'))
 async def add_start(event):
     user_id = event.sender_id
     can_add, remaining = can_add_today()
@@ -203,14 +170,12 @@ async def add_start(event):
     await event.reply(f"✅ يمكنك إضافة {remaining} مستخدم اليوم\n\n🔄 **بدء عملية الإضافة...**\n\nالرجاء إرسال ملف CSV الذي يحتوي على الأعضاء")
     user_sessions[user_id] = {'action': 'add', 'step': 'waiting_for_file', 'remaining': remaining}
 
-@bot.on(events.NewMessage(pattern='/cancel'))
 async def cancel_cmd(event):
     user_id = event.sender_id
     if user_id in user_sessions:
         del user_sessions[user_id]
     await event.reply("✅ **تم إلغاء العملية الحالية.**")
 
-@bot.on(events.NewMessage(func=lambda e: e.file and e.file.name and e.file.name.endswith(('.csv', '.txt'))))
 async def handle_file(event):
     user_id = event.sender_id
     if user_id not in user_sessions or user_sessions[user_id].get('action') != 'add':
@@ -247,7 +212,6 @@ async def handle_file(event):
         message += f"{i+1}. {group.name}\n"
     await event.reply(message)
 
-@bot.on(events.NewMessage(func=lambda e: e.text and e.text.strip().isdigit()))
 async def handle_number_selection(event):
     user_id = event.sender_id
     if user_id not in user_sessions:
@@ -287,7 +251,6 @@ async def handle_number_selection(event):
         user_sessions[user_id]['step'] = 'waiting_for_count'
         user_sessions[user_id]['target_group'] = target_group
 
-@bot.on(events.NewMessage(func=lambda e: e.text and e.text.strip().isdigit()))
 async def handle_add_count(event):
     user_id = event.sender_id
     if user_id not in user_sessions or user_sessions[user_id].get('step') != 'waiting_for_count':
@@ -333,12 +296,30 @@ async def handle_add_count(event):
     await event.reply(f"📊 **تقرير الإضافة:**\n✅ نجح: {added}\n❌ فشل: {errors}\n📈 إجمالي: {len(users_to_add)}")
     del user_sessions[user_id]
 
+# ==================== تشغيل البوت ====================
 async def run_bot():
-    """تشغيل البوت"""
+    """تشغيل البوت وتسجيل الأوامر"""
     global bot
+    
+    # تهيئة البوت
     bot = TelegramClient(SESSION_FILE, API_ID, API_HASH)
     await bot.start(bot_token=BOT_TOKEN)
+    
+    # تسجيل الأوامر بعد تهيئة البوت
+    bot.add_event_handler(start, events.NewMessage(pattern='/start'))
+    bot.add_event_handler(help_cmd, events.NewMessage(pattern='/help'))
+    bot.add_event_handler(status_cmd, events.NewMessage(pattern='/status'))
+    bot.add_event_handler(list_groups, events.NewMessage(pattern='/groups'))
+    bot.add_event_handler(scrape_start, events.NewMessage(pattern='/scrape'))
+    bot.add_event_handler(add_start, events.NewMessage(pattern='/add'))
+    bot.add_event_handler(cancel_cmd, events.NewMessage(pattern='/cancel'))
+    bot.add_event_handler(handle_file, events.NewMessage(func=lambda e: e.file and e.file.name and e.file.name.endswith(('.csv', '.txt'))))
+    bot.add_event_handler(handle_number_selection, events.NewMessage(func=lambda e: e.text and e.text.strip().isdigit()))
+    bot.add_event_handler(handle_add_count, events.NewMessage(func=lambda e: e.text and e.text.strip().isdigit()))
+    
     print("✅ Bot client started successfully!")
+    print("🤖 البوت يعمل الآن...")
+    
     await bot.run_until_disconnected()
 
 def start_bot_thread():
@@ -347,6 +328,7 @@ def start_bot_thread():
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_bot())
 
+# ==================== التشغيل الرئيسي ====================
 if __name__ == "__main__":
     print("""
     ╔═══════════════════════════════════════╗
