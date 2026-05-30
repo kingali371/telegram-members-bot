@@ -13,12 +13,53 @@ from telethon import TelegramClient, events
 from telethon.tl.functions.channels import InviteToChannelRequest
 from telethon.errors.rpcerrorlist import PeerFloodError, UserPrivacyRestrictedError
 
-# استيراد الإعدادات
-try:
-    from config import API_ID, API_HASH, BOT_TOKEN, MIN_WAIT, MAX_WAIT, MAX_ADD_PER_DAY
-except ImportError:
-    print("❌ يرجى إنشاء ملف config.py من config_example.py")
-    exit(1)
+# ==================== 🔑 ضع مفاتيحك هنا ====================
+# من فضلك غير هذه القيم بالمفاتيح الخاصة بك
+
+# 1️⃣ API ID و API Hash من موقع my.telegram.org
+API_ID = 12345678                    # ⬅️ ضع رقم API ID الخاص بك هنا
+API_HASH = 'ضع_api_hash_هنا'          # ⬅️ ضع النص الطويل الخاص بك هنا
+
+# 2️⃣ توكن البوت من @BotFather
+BOT_TOKEN = 'ضع_توكن_البوت_هنا'        # ⬅️ ضع توكن البوت الخاص بك هنا
+
+# 3️⃣ إعدادات الحماية (يمكنك تعديلها)
+MIN_WAIT = 180      # أقل وقت بين الإضافات (ثواني) - 3 دقائق
+MAX_WAIT = 300      # أقصى وقت بين الإضافات (ثواني) - 5 دقائق  
+MAX_ADD_PER_DAY = 20  # الحد الأقصى للإضافات في اليوم
+# =========================================================
+
+# التحقق من صحة الإعدادات قبل التشغيل
+def validate_settings():
+    """تتحقق من صحة المفاتيح قبل تشغيل البوت"""
+    errors = []
+    
+    if API_ID == 12345678:
+        errors.append("❌ API_ID لم يتم تعديله! يرجى إدخال الـ API ID الخاص بك من my.telegram.org")
+    
+    if API_HASH == 'ضع_api_hash_هنا':
+        errors.append("❌ API_HASH لم يتم تعديله! يرجى إدخال الـ API Hash الخاص بك")
+    
+    if BOT_TOKEN == 'ضع_توكن_البوت_هنا':
+        errors.append("❌ BOT_TOKEN لم يتم تعديله! يرجى إدخال توكن البوت من @BotFather")
+    
+    if MAX_ADD_PER_DAY > 50:
+        errors.append("⚠️ تحذير: MAX_ADD_PER_DAY أكبر من 50 - هذا قد يعرض حسابك للخطر!")
+    
+    if MIN_WAIT < 60:
+        errors.append("⚠️ تحذير: MIN_WAIT أقل من 60 ثانية - قد تحصل على حظر Flood!")
+    
+    if errors:
+        print("\n" + "="*50)
+        for error in errors:
+            print(error)
+        print("="*50)
+        return False
+    
+    print("✅ جميع الإعدادات صحيحة!")
+    print(f"📊 سيتم إضافة {MAX_ADD_PER_DAY} مستخدم كحد أقصى يومياً")
+    print(f"⏱️  وقت الانتظار بين الإضافات: {MIN_WAIT} - {MAX_WAIT} ثانية")
+    return True
 
 # ملفات التخزين
 LOG_FILE = "data/add_log.txt"
@@ -28,6 +69,7 @@ SESSION_FILE = "data/bot_session"
 os.makedirs("data", exist_ok=True)
 
 # تهيئة البوت
+print("🔄 جاري تهيئة البوت...")
 bot = TelegramClient(SESSION_FILE, API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 # متغيرات عالمية
@@ -355,7 +397,18 @@ async def main():
     ║   بوت نقل أعضاء تيليجرام              ║
     ╚═══════════════════════════════════════╝
     """)
+    
+    # التحقق من صحة الإعدادات
+    if not validate_settings():
+        print("\n❌ لا يمكن تشغيل البوت بسبب أخطاء في الإعدادات!")
+        print("📝 يرجى تصحيح الأخطاء أعلاه وإعادة تشغيل البوت.")
+        return
+    
     print("📱 البوت يعمل الآن...")
+    print("💬 اذهب إلى تيليجرام وابحث عن البوت الخاص بك")
+    print("📋 أرسل /start لبدء الاستخدام")
+    print("="*50)
+    
     await bot.run_until_disconnected()
 
 if __name__ == "__main__":
