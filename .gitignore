@@ -2,25 +2,45 @@
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
 
 # ملفات الجلسة (مهم جداً!)
 *.session
 *.session-journal
+data/bot_session*
 
 # مجلد البيانات
 data/
-*.csv
-!example.csv
+!data/.gitkeep
 
 # ملفات الإعدادات الخاصة
-.env
 config.py
+.env
+accounts.json
 
 # بيئة التطوير
 venv/
 env/
 .venv/
+ENV/
+
+# ملفات IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # نظام التشغيل
 .DS_Store
 Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ملفات CSV المصدرة
+members_*.csv
+*.csv
+!example.csv
+
+# سجلات
+*.log
