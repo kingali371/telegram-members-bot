@@ -1,6 +1,4 @@
 # render.yaml - ملف إعدادات Render
-# ضع هذا الملف في نفس مجلد app.py
-
 services:
   - type: web
     name: telegram-members-bot
@@ -12,11 +10,17 @@ services:
     healthCheckPath: /health
     envVars:
       - key: API_ID
-        sync: false  # سيطلب منك إدخال القيمة في لوحة التحكم
+        sync: false
+        required: true
       - key: API_HASH
         sync: false
+        required: true
       - key: BOT_TOKEN
         sync: false
+        required: true
+      - key: OWNER_ID
+        sync: false
+        required: true
       - key: MIN_WAIT
         value: "180"
       - key: MAX_WAIT
