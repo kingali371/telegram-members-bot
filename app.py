@@ -1,6 +1,6 @@
 """
-Telegram Members Transfer Bot - نسخة Render
-بوت لنقل وإدارة أعضاء مجموعات تيليجرام مع دعم Flask server
+Telegram Members Transfer Bot - نسخة Render مع متغيرات بيئية
+بوت لنقل وإدارة أعضاء مجموعات تيليجرام
 """
 
 import asyncio
@@ -15,29 +15,55 @@ from telethon import TelegramClient, events
 from telethon.tl.functions.channels import InviteToChannelRequest
 from telethon.errors.rpcerrorlist import PeerFloodError, UserPrivacyRestrictedError
 
-# ==================== 🔑 إعدادات البوت ====================
-# 🚨 هام: ضع القيم الصحيحة هنا قبل الرفع على Render
-API_ID = 12345678                    # ⬅️ ضع API ID الخاص بك
-API_HASH = 'ضع_api_hash_هنا'          # ⬅️ ضع API Hash
-BOT_TOKEN = 'ضع_توكن_البوت_هنا'        # ⬅️ ضع توكن البوت
+# ==================== 🔑 قراءة المتغيرات البيئية ====================
+# هذه المتغيرات ستضيفها في لوحة تحكم Render
 
-# إعدادات الحماية
-MIN_WAIT = 180      # أقل وقت بين الإضافات
-MAX_WAIT = 300      # أقصى وقت بين الإضافات
-MAX_ADD_PER_DAY = 20  # الحد الأقصى للإضافات في اليوم
-# =========================================================
+# 1️⃣ API ID و API Hash من موقع my.telegram.org
+API_ID = int(os.environ.get('API_ID', 0))
+API_HASH = os.environ.get('API_HASH', '')
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '')
 
-# ==================== إعدادات Flask ====================
-app = Flask(__name__)
+# 2️⃣ إعدادات الحماية (يمكنك ضبطها من المتغيرات أو تركها كما هي)
+MIN_WAIT = int(os.environ.get('MIN_WAIT', 180))      # أقل وقت بين الإضافات (ثواني)
+MAX_WAIT = int(os.environ.get('MAX_WAIT', 300))      # أقصى وقت بين الإضافات (ثواني)
+MAX_ADD_PER_DAY = int(os.environ.get('MAX_ADD_PER_DAY', 20))  # الحد الأقصى للإضافات في اليوم
 
-@app.route('/')
-def home():
-    return jsonify({"status": "Bot is running", "message": "Telegram Members Transfer Bot"})
+# ================================================================
 
-@app.route('/health')
-def health():
-    return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()})
-# =========================================================
+# التحقق من صحة المتغيرات
+def validate_settings():
+    """تتحقق من صحة المتغيرات البيئية قبل تشغيل البوت"""
+    errors = []
+    
+    if API_ID == 0:
+        errors.append("❌ API_ID غير موجود! يرجى إضافته في متغيرات البيئة")
+    
+    if not API_HASH:
+        errors.append("❌ API_HASH غير موجود! يرجى إضافته في متغيرات البيئة")
+    
+    if not BOT_TOKEN:
+        errors.append("❌ BOT_TOKEN غير موجود! يرجى إضافته في متغيرات البيئة")
+    
+    if MAX_ADD_PER_DAY > 50:
+        errors.append("⚠️ تحذير: MAX_ADD_PER_DAY أكبر من 50 - هذا قد يعرض حسابك للخطر!")
+    
+    if MIN_WAIT < 60:
+        errors.append("⚠️ تحذير: MIN_WAIT أقل من 60 ثانية - قد تحصل على حظر Flood!")
+    
+    if errors:
+        print("\n" + "="*50)
+        for error in errors:
+            print(error)
+        print("="*50)
+        return False
+    
+    print("✅ جميع الإعدادات صحيحة!")
+    print(f"🤖 توكن البوت: {BOT_TOKEN[:15]}...")
+    print(f"🔑 API ID: {API_ID}")
+    print(f"🔐 API Hash: {API_HASH[:10]}...")
+    print(f"📊 الحد اليومي: {MAX_ADD_PER_DAY} مستخدم")
+    print(f"⏱️  وقت الانتظار: {MIN_WAIT} - {MAX_WAIT} ثانية")
+    return True
 
 # إعدادات الملفات
 LOG_FILE = "data/add_log.txt"
@@ -48,6 +74,26 @@ os.makedirs("data", exist_ok=True)
 user_sessions = {}
 bot = None
 bot_thread = None
+
+# ==================== إعدادات Flask ====================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return jsonify({
+        "status": "Bot is running", 
+        "message": "Telegram Members Transfer Bot",
+        "bot_username": BOT_TOKEN.split(':')[0] if ':' in BOT_TOKEN else "unknown"
+    })
+
+@app.route('/health')
+def health():
+    return jsonify({
+        "status": "ok", 
+        "timestamp": datetime.now().isoformat(),
+        "bot_active": bot is not None
+    })
+# =========================================================
 
 def can_add_today():
     """التحقق من الحد اليومي"""
@@ -308,6 +354,16 @@ if __name__ == "__main__":
     ║   بوت نقل أعضاء تيليجرام              ║
     ╚═══════════════════════════════════════╝
     """)
+    
+    # التحقق من صحة المتغيرات
+    if not validate_settings():
+        print("\n❌ لا يمكن تشغيل البوت بسبب أخطاء في المتغيرات!")
+        print("📝 يرجى إضافة المتغيرات التالية في لوحة تحكم Render:")
+        print("   - API_ID")
+        print("   - API_HASH")
+        print("   - BOT_TOKEN")
+        exit(1)
+    
     print("🔄 جاري تشغيل البوت...")
     
     # تشغيل البوت في thread منفصل
@@ -317,5 +373,6 @@ if __name__ == "__main__":
     
     # تشغيل Flask server
     port = int(os.environ.get("PORT", 5000))
-    print(f"🌐 Starting Flask server on port {port}...")
+    print(f"🌐 تشغيل Flask server على المنفذ {port}...")
+    print("="*50)
     app.run(host="0.0.0.0", port=port)
