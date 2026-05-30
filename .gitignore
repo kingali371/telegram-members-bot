@@ -1,35 +1,8 @@
-# ملفات الإعدادات الخاصة
 config.py
 .env
-
-# ملفات الجلسة
 *.session
 *.session-journal
 data/
-
-# ملفات CSV الناتجة
-*.csv
-!example.csv
-
-# ملفات بايثون
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-
-# بيئات التطوير
-venv/
-env/
-ENV/
-.venv/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# نظام التشغيل
-.DS_Store
-Thumbs.db
+*.csv
