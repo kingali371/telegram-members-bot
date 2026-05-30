@@ -1,32 +1,52 @@
 # 🤖 Telegram Members Transfer Bot
 
-[![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://python.org)
-[![Telethon](https://img.shields.io/badge/Telethon-1.34+-green.svg)](https://github.com/LonamiWebs/Telethon)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-بوت لنقل وإدارة أعضاء مجموعات تيليجرام بشكل آمن مع حماية من الحظر.
+بوت لنقل وإدارة أعضاء مجموعات تيليجرام مع واجهة أزرار تفاعلية.
 
 ## ✨ المميزات
 
-- ✅ **سحب الأعضاء** من أي مجموعة وحفظهم كملف CSV
-- ✅ **إضافة أعضاء** من ملف CSV إلى مجموعة أخرى
-- ✅ **تحكم كامل عبر أوامر البوت**
-- ✅ **حماية ذكية** من حظر الحساب (Flood Control)
-- ✅ **حد يومي** للإضافات (قابل للتعديل)
-- ✅ **تسجيل الإضافات** لمعرفة الاستخدام اليومي
-- ✅ **انتظار عشوائي** بين الإضافات (3-5 دقائق)
+- ➕ إضافة حسابات متعددة
+- 📁 سحب أعضاء من المجموعات
+- 📤 إضافة أعضاء إلى المجموعات
+- 👑 لوحة تحكم المالك
+- 🛡️ حماية من الحظر (Flood Control)
+- 📊 حدود يومية قابلة للتعديل
 
-## 📋 المتطلبات
+## 🚀 النشر على Render
 
-- Python 3.7 أو أحدث
-- حساب تيليجرام
-- توكن بوت من [@BotFather](https://t.me/BotFather)
-- API ID و API Hash من [my.telegram.org](https://my.telegram.org)
+1. انسخ هذا المستودع إلى GitHub
+2. اذهب إلى [Render.com](https://render.com)
+3. اختر "New +" → "Web Service"
+4. اختر المستودع الخاص بك
+5. أضف المتغيرات البيئية التالية:
 
-## 🚀 التثبيت والتشغيل
+| متغير | الوصف |
+|-------|-------|
+| API_ID | من my.telegram.org |
+| API_HASH | من my.telegram.org |
+| BOT_TOKEN | من @BotFather |
+| OWNER_ID | معرف حسابك على تيليجرام |
 
-### 1. استنساخ المشروع
+6. اضغط "Create Web Service"
 
-```bash
-git clone https://github.com/YOUR_USERNAME/telegram-members-bot.git
-cd telegram-members-bot
+## 📋 الأوامر
+
+- `/start` - عرض القائمة الرئيسية
+- `/scrape` - سحب أعضاء من مجموعة
+- `/add` - إضافة أعضاء من ملف CSV
+- `/groups` - عرض قائمة المجموعات
+- `/status` - عرض حالة الإضافات
+- `/cancel` - إلغاء العملية الحالية
+
+## 👑 أوامر المالك
+
+يظهر زر "لوحة المالك" للمالك فقط وتشمل:
+- إحصائيات البوت
+- إدارة المالكين
+- إدارة الحسابات
+- إعدادات البوت
+- سجل الإضافات
+- بث رسائل
+
+## ⚠️ تنبيه
+
+استخدم البوت بمسؤولية. الإغراق قد يؤدي إلى حظر حسابك.
