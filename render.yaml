@@ -1,0 +1,25 @@
+# render.yaml - ملف إعدادات Render
+# ضع هذا الملف في نفس مجلد app.py
+
+services:
+  - type: web
+    name: telegram-members-bot
+    runtime: python
+    repo: https://github.com/kingali371/telegram-members-bot
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: API_ID
+        sync: false  # سيطلب منك إدخال القيمة في لوحة التحكم
+      - key: API_HASH
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: MIN_WAIT
+        value: "180"
+      - key: MAX_WAIT
+        value: "300"
+      - key: MAX_ADD_PER_DAY
+        value: "20"
