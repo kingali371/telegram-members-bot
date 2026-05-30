@@ -1,8 +1,26 @@
-config.py
-.env
-*.session
-*.session-journal
-data/
+# ملفات بايثون
 __pycache__/
 *.pyc
+*.pyo
+
+# ملفات الجلسة (مهم جداً!)
+*.session
+*.session-journal
+
+# مجلد البيانات
+data/
 *.csv
+!example.csv
+
+# ملفات الإعدادات الخاصة
+.env
+config.py
+
+# بيئة التطوير
+venv/
+env/
+.venv/
+
+# نظام التشغيل
+.DS_Store
+Thumbs.db
