@@ -1,5 +1,5 @@
 """
-Telegram Members Transfer Bot - نسخة Render مع متغيرات بيئية
+Telegram Members Transfer Bot - نسخة Render مع متغيرات بيئية وأزرار تفاعلية
 بوت لنقل وإدارة أعضاء مجموعات تيليجرام
 """
 
@@ -14,6 +14,8 @@ from flask import Flask, request, jsonify
 from telethon import TelegramClient, events
 from telethon.tl.functions.channels import InviteToChannelRequest
 from telethon.errors.rpcerrorlist import PeerFloodError, UserPrivacyRestrictedError
+from telethon.tl.types import KeyboardButtonCallback, KeyboardButtonUrl
+from telethon.tl.custom import Button
 
 # ==================== 🔑 قراءة المتغيرات البيئية ====================
 API_ID = int(os.environ.get('API_ID', 0))
@@ -28,11 +30,13 @@ MAX_ADD_PER_DAY = int(os.environ.get('MAX_ADD_PER_DAY', 20))
 # إعدادات الملفات
 LOG_FILE = "data/add_log.txt"
 SESSION_FILE = "data/bot_session"
+ACCOUNTS_FILE = "data/accounts.json"
 os.makedirs("data", exist_ok=True)
 
 # متغيرات عالمية
 user_sessions = {}
 bot = None
+active_accounts = {}  # لتخزين الحسابات المتعددة
 
 # ==================== إعدادات Flask ====================
 app = Flask(__name__)
@@ -104,27 +108,109 @@ def log_add():
 def random_wait():
     return random.randint(MIN_WAIT, MAX_WAIT)
 
-# ==================== دوال البوت ====================
+# ==================== دوال إدارة الحسابات ====================
+async def add_account(event):
+    """إضافة حساب جديد للبوت"""
+    user_id = event.sender_id
+    await event.reply(""+
+        "➕ **إضافة حساب جديد**\n\n"+
+        "الرجاء إدخال معلومات الحساب بالشكل التالي:\n"+
+        "`رقم_الهاتف|api_id|api_hash`\n\n"+
+        "مثال:\n`+1234567890|123456|abc123def456...`\n\n"+
+        "⚠️ سيتم حفظ الحساب بشكل آمن واستخدامه في نقل الأعضاء",
+        buttons=[
+            [Button.inline("❌ إلغاء", b"cancel_account")],
+            [Button.url("📖 كيفية الحصول على API", "https://my.telegram.org/apps")]
+        ]
+    )
+    user_sessions[user_id] = {'action': 'add_account', 'step': 'waiting_for_account_info'}
+
+async def transfer_members_start(event):
+    """بدء عملية نقل الأعضاء بين الحسابات"""
+    user_id = event.sender_id
+    if not active_accounts:
+        await event.reply(""+
+            "❌ **لا توجد حسابات نشطة!**\n\n"+
+            "الرجاء إضافة حساب أولاً باستخدام زر ➕ إضافة حساب",
+            buttons=[[Button.inline("➕ إضافة حساب", b"add_account")]]
+        )
+        return
+    
+    # عرض قائمة الحسابات المتاحة
+    accounts_list = list(active_accounts.keys())
+    message = "🔄 **نقل الأعضاء بين الحسابات**\n\n"
+    message += "**اختر الحساب المصدر (المنقول منه):**\n\n"
+    
+    buttons = []
+    for i, acc in enumerate(accounts_list[:10]):
+        buttons.append([Button.inline(f"📱 {acc[:20]}...", f"source_acc_{i}".encode())])
+    
+    await event.reply(message, buttons=buttons)
+    user_sessions[user_id] = {'action': 'transfer_members', 'step': 'waiting_for_source_account', 'accounts': accounts_list}
+
+async def show_accounts(event):
+    """عرض قائمة الحسابات النشطة"""
+    if not active_accounts:
+        await event.reply(""+
+            "📭 **لا توجد حسابات نشطة**\n\n"+
+            "استخدم زر ➕ إضافة حساب لإضافة حساب جديد",
+            buttons=[[Button.inline("➕ إضافة حساب", b"add_account")]]
+        )
+        return
+    
+    message = "📱 **الحسابات النشطة:**\n\n"
+    for i, (phone, acc_info) in enumerate(active_accounts.items(), 1):
+        status = "✅ نشط" if acc_info.get('connected') else "❌ غير متصل"
+        message += f"{i}. `{phone}`\n   {status}\n\n"
+    
+    message += f"\n📊 **عدد الحسابات:** {len(active_accounts)}"
+    
+    await event.reply(message, buttons=[
+        [Button.inline("➕ إضافة حساب", b"add_account")],
+        [Button.inline("❌ حذف حساب", b"remove_account")]
+    ])
+
+# ==================== دوال البوت الرئيسية ====================
 async def start(event):
+    keyboard = [
+        [
+            Button.inline("➕ إضافة حساب", b"add_account"),
+            Button.inline("🔄 نقل أعضاء", b"transfer_members")
+        ],
+        [
+            Button.inline("📊 حالة الحسابات", b"show_accounts"),
+            Button.inline("📁 سحب أعضاء", b"scrape_members")
+        ],
+        [
+            Button.inline("➕ إضافة أعضاء", b"add_members"),
+            Button.inline("📋 المجموعات", b"list_groups")
+        ],
+        [
+            Button.inline("📈 الحالة اليومية", b"daily_status"),
+            Button.inline("❓ المساعدة", b"help_menu")
+        ]
+    ]
+    
     await event.reply("""
 🤖 **مرحباً بك في بوت نقل أعضاء تيليجرام!**
 
-📋 **الأوامر المتاحة:**
+📌 **الأزرار المتاحة:**
 
-🔹 `/scrape` - سحب أعضاء من مجموعة وحفظهم
-🔹 `/add` - إضافة أعضاء من ملف إلى مجموعة
-🔹 `/groups` - عرض قائمة المجموعات
-🔹 `/status` - عرض حالة الإضافات اليومية
-🔹 `/cancel` - إلغاء العملية الحالية
-🔹 `/help` - عرض هذه المساعدة
+➕ **إضافة حساب** - إضافة حساب جديد للبوت
+🔄 **نقل أعضاء** - نقل أعضاء بين الحسابات
+📁 **سحب أعضاء** - سحب أعضاء من مجموعة
+➕ **إضافة أعضاء** - إضافة أعضاء إلى مجموعة
+📋 **المجموعات** - عرض قائمة المجموعات
+📈 **الحالة اليومية** - عرض حالة الإضافات
+❓ **المساعدة** - عرض الأوامر المتاحة
 
-⚠️ **تحذير:** استخدم البوت بمسؤولية!
-    """)
+⚠️ **تنبيه:** استخدم البوت بمسؤولية وتجنب الإغراق!
+    """, buttons=keyboard)
 
-async def help_cmd(event):
+async def help_menu(event):
     await start(event)
 
-async def status_cmd(event):
+async def daily_status(event):
     can_add, remaining = can_add_today()
     if can_add:
         await event.reply(f"📊 **حالة اليوم:**\n✅ يمكنك إضافة {remaining} مستخدم اليوم\n📈 الحد الأقصى: {MAX_ADD_PER_DAY}")
@@ -145,7 +231,7 @@ async def list_groups(event):
         message += f"{i+1}. {group.name}\n"
     await event.reply(message)
 
-async def scrape_start(event):
+async def scrape_members_start(event):
     user_id = event.sender_id
     await event.reply("🔄 **بدء عملية سحب الأعضاء...**")
     groups = []
@@ -161,7 +247,7 @@ async def scrape_start(event):
         message += f"{i+1}. {group.name}\n"
     await event.reply(message)
 
-async def add_start(event):
+async def add_members_start(event):
     user_id = event.sender_id
     can_add, remaining = can_add_today()
     if not can_add:
@@ -296,6 +382,93 @@ async def handle_add_count(event):
     await event.reply(f"📊 **تقرير الإضافة:**\n✅ نجح: {added}\n❌ فشل: {errors}\n📈 إجمالي: {len(users_to_add)}")
     del user_sessions[user_id]
 
+# ==================== معالجة الأزرار ====================
+async def handle_callback(event):
+    """معالجة النقر على الأزرار"""
+    data = event.data.decode('utf-8')
+    
+    if data == "add_account":
+        await add_account(event)
+    elif data == "transfer_members":
+        await transfer_members_start(event)
+    elif data == "show_accounts":
+        await show_accounts(event)
+    elif data == "scrape_members":
+        await scrape_members_start(event)
+    elif data == "add_members":
+        await add_members_start(event)
+    elif data == "list_groups":
+        await list_groups(event)
+    elif data == "daily_status":
+        await daily_status(event)
+    elif data == "help_menu":
+        await help_menu(event)
+    elif data == "cancel_account":
+        if event.sender_id in user_sessions:
+            del user_sessions[event.sender_id]
+        await event.edit("✅ **تم إلغاء إضافة الحساب**")
+    elif data.startswith("source_acc_"):
+        # معالجة اختيار الحساب المصدر
+        await handle_source_account_selection(event)
+    elif data.startswith("target_acc_"):
+        # معالجة اختيار الحساب الهدف
+        await handle_target_account_selection(event)
+
+async def handle_source_account_selection(event):
+    """معالجة اختيار الحساب المصدر لنقل الأعضاء"""
+    user_id = event.sender_id
+    if user_id not in user_sessions or user_sessions[user_id].get('action') != 'transfer_members':
+        return
+    
+    data = event.data.decode('utf-8')
+    index = int(data.split('_')[2])
+    accounts = user_sessions[user_id]['accounts']
+    source_account = accounts[index]
+    
+    user_sessions[user_id]['source_account'] = source_account
+    user_sessions[user_id]['step'] = 'waiting_for_target_account'
+    
+    # عرض الحسابات الهدف
+    accounts_list = list(active_accounts.keys())
+    message = f"✅ **تم اختيار الحساب المصدر:** {source_account[:20]}...\n\n"
+    message += "**اختر الحساب الهدف (المنقول إليه):**\n\n"
+    
+    buttons = []
+    for i, acc in enumerate(accounts_list):
+        if acc != source_account:
+            buttons.append([Button.inline(f"📱 {acc[:20]}...", f"target_acc_{i}".encode())])
+    
+    if not buttons:
+        await event.edit("❌ **لا توجد حسابات هدف متاحة!**")
+        return
+    
+    await event.edit(message, buttons=buttons)
+
+async def handle_target_account_selection(event):
+    """معالجة اختيار الحساب الهدف لنقل الأعضاء"""
+    user_id = event.sender_id
+    if user_id not in user_sessions or user_sessions[user_id].get('action') != 'transfer_members':
+        return
+    
+    data = event.data.decode('utf-8')
+    index = int(data.split('_')[2])
+    accounts = user_sessions[user_id]['accounts']
+    target_account = accounts[index]
+    source_account = user_sessions[user_id]['source_account']
+    
+    await event.edit(f"""
+✅ **تم تحديد الحسابات:**
+📤 **المصدر:** {source_account[:20]}...
+📥 **الهدف:** {target_account[:20]}...
+
+🔄 **جاري بدء عملية نقل الأعضاء...**
+    """)
+    
+    # هنا يمكن إضافة منطق نقل الأعضاء الفعلي بين الحسابات
+    await event.reply("🚧 **هذه الميزة قيد التطوير...**\nسيتم إضافة منطق نقل الأعضاء قريباً!")
+    
+    del user_sessions[user_id]
+
 # ==================== تشغيل البوت ====================
 async def run_bot():
     """تشغيل البوت وتسجيل الأوامر"""
@@ -305,20 +478,21 @@ async def run_bot():
     bot = TelegramClient(SESSION_FILE, API_ID, API_HASH)
     await bot.start(bot_token=BOT_TOKEN)
     
-    # تسجيل الأوامر بعد تهيئة البوت
+    # تسجيل الأوامر والأحداث
     bot.add_event_handler(start, events.NewMessage(pattern='/start'))
-    bot.add_event_handler(help_cmd, events.NewMessage(pattern='/help'))
-    bot.add_event_handler(status_cmd, events.NewMessage(pattern='/status'))
+    bot.add_event_handler(help_menu, events.NewMessage(pattern='/help'))
+    bot.add_event_handler(daily_status, events.NewMessage(pattern='/status'))
     bot.add_event_handler(list_groups, events.NewMessage(pattern='/groups'))
-    bot.add_event_handler(scrape_start, events.NewMessage(pattern='/scrape'))
-    bot.add_event_handler(add_start, events.NewMessage(pattern='/add'))
+    bot.add_event_handler(scrape_members_start, events.NewMessage(pattern='/scrape'))
+    bot.add_event_handler(add_members_start, events.NewMessage(pattern='/add'))
     bot.add_event_handler(cancel_cmd, events.NewMessage(pattern='/cancel'))
     bot.add_event_handler(handle_file, events.NewMessage(func=lambda e: e.file and e.file.name and e.file.name.endswith(('.csv', '.txt'))))
     bot.add_event_handler(handle_number_selection, events.NewMessage(func=lambda e: e.text and e.text.strip().isdigit()))
     bot.add_event_handler(handle_add_count, events.NewMessage(func=lambda e: e.text and e.text.strip().isdigit()))
+    bot.add_event_handler(handle_callback, events.CallbackQuery())
     
     print("✅ Bot client started successfully!")
-    print("🤖 البوت يعمل الآن...")
+    print("🤖 البوت يعمل الآن مع الأزرار التفاعلية...")
     
     await bot.run_until_disconnected()
 
@@ -333,7 +507,7 @@ if __name__ == "__main__":
     print("""
     ╔═══════════════════════════════════════╗
     ║   🤖 Telegram Members Transfer Bot    ║
-    ║   بوت نقل أعضاء تيليجرام              ║
+    ║   بوت نقل أعضاء تيليجرام مع أزرار    ║
     ╚═══════════════════════════════════════╝
     """)
     
